@@ -120,6 +120,7 @@ class TrainCollater:
                        "flag":flag,
                        }
         else:
+            real_answers = [sample['correct_answer'] for sample in batch]
             batch_tokens = self.llm_tokenizer(
                 inputs_text,
                 return_tensors="pt",
@@ -132,7 +133,7 @@ class TrainCollater:
                        "user_id": torch.stack([torch.tensor(sample['user_id']) for sample in batch], dim=0),
                        "len_seq": torch.stack([torch.tensor(sample['len_seq']) for sample in batch], dim=0),
                        "item_id": torch.stack([torch.tensor(sample['item_id']) for sample in batch], dim=0),
-                       "correct_answer": targets_text,
+                       "correct_answer": real_answers,
                        }
         return new_batch
 
