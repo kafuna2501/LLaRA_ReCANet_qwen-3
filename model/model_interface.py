@@ -612,7 +612,7 @@ class MInterface(pl.LightningModule):
         return valid_ratio,hr1
 
     def _extract_recommended_items(self, generated_text):
-        """Parse recommended items from output and map them to known item names."""
+        """Parse recommended items strictly from `item:` field in model output."""
         text = str(generated_text).strip()
         candidates = []
 
@@ -633,24 +633,7 @@ class MInterface(pl.LightningModule):
             if name in self.all_item_name_set and name not in seen:
                 normalized.append(name)
                 seen.add(name)
-
-        if normalized:
-            return normalized
-
-        # Backward-compatible fallback for free-form outputs.
-        normalized_text = self._normalize_item_name(text)
-        if normalized_text in self.all_item_name_set:
-            return [normalized_text]
-
-        matches = []
-        for item_name in self.all_item_names:
-            pos = normalized_text.find(item_name)
-            if pos != -1:
-                matches.append((pos, -len(item_name), item_name))
-        if not matches:
-            return []
-        matches.sort()
-        return [matches[0][2]]
+        return normalized
 
     def _normalize_structured_output(self, generated_text):
         """Convert model output into the expected two-line format."""
