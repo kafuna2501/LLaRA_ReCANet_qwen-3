@@ -1,0 +1,5 @@
+On [TodayHere], Customer_[UserIdHere][UserEmb] has purchased [TodaySeqHere], what would be bought next?
+
+Output format is as follows:
+"item: {exact item name}
+explanation: {one concise sentence in Japanese}"
