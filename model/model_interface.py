@@ -93,24 +93,28 @@ class MInterface(pl.LightningModule):
 
     def on_validation_epoch_start(self):
         self.val_content={
-            "generate":[],
-            "real":[],
+            "generate_raw":[],
+            "generate_item":[],
+            "explanation":[],
+            "real_item":[],
         }
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
         generate_output = self.generate(batch)
         output=[]
-        for i,generate in enumerate(generate_output):
-            real=batch['correct_answer'][i]
-            generate=self._normalize_structured_output(generate)
-            output.append((generate,real))
+        for i, generate_raw in enumerate(generate_output):
+            real_item = batch['correct_answer'][i]
+            generate_item, explanation = self._extract_item_and_explanation(generate_raw)
+            output.append((str(generate_raw), generate_item, explanation, real_item))
         return output
 
     def on_validation_batch_end(self, outputs, batch, batch_idx, dataloader_idx=0):
-        for generate,real in outputs:
-            self.val_content["generate"].append(generate)
-            self.val_content["real"].append(real)
+        for generate_raw, generate_item, explanation, real_item in outputs:
+            self.val_content["generate_raw"].append(generate_raw)
+            self.val_content["generate_item"].append(generate_item)
+            self.val_content["explanation"].append(explanation)
+            self.val_content["real_item"].append(real_item)
 
     def on_validation_epoch_end(self):
         df=DataFrame(self.val_content)
@@ -125,24 +129,28 @@ class MInterface(pl.LightningModule):
 
     def on_test_epoch_start(self):
         self.test_content={
-            "generate":[],
-            "real":[],
+            "generate_raw":[],
+            "generate_item":[],
+            "explanation":[],
+            "real_item":[],
         }
 
     @torch.no_grad()
     def test_step(self, batch, batch_idx):
         generate_output = self.generate(batch)
         output=[]
-        for i,generate in enumerate(generate_output):
-            real=batch['correct_answer'][i]
-            generate=self._normalize_structured_output(generate)
-            output.append((generate,real))
+        for i, generate_raw in enumerate(generate_output):
+            real_item = batch['correct_answer'][i]
+            generate_item, explanation = self._extract_item_and_explanation(generate_raw)
+            output.append((str(generate_raw), generate_item, explanation, real_item))
         return output
 
     def on_test_batch_end(self, outputs, batch, batch_idx, dataloader_idx=0):
-        for generate,real in outputs:
-            self.test_content["generate"].append(generate)
-            self.test_content["real"].append(real)
+        for generate_raw, generate_item, explanation, real_item in outputs:
+            self.test_content["generate_raw"].append(generate_raw)
+            self.test_content["generate_item"].append(generate_item)
+            self.test_content["explanation"].append(explanation)
+            self.test_content["real_item"].append(real_item)
 
     def on_test_epoch_end(self):
         df=DataFrame(self.test_content)
@@ -152,13 +160,17 @@ class MInterface(pl.LightningModule):
 
         #Debug start
         print("===== Sample test predictions (first 5) =====")
-        n_show = min(100, len(self.test_content["generate"]))
+        n_show = min(100, len(self.test_content["generate_raw"]))
         for i in range(n_show):
-            gen  = self.test_content["generate"][i]
-            real = self.test_content["real"][i]
+            gen_raw = self.test_content["generate_raw"][i]
+            gen_item = self.test_content["generate_item"][i]
+            explanation = self.test_content["explanation"][i]
+            real_item = self.test_content["real_item"][i]
             print(f"[{i}]")
-            print(f"  pred : {gen}")
-            print(f"  real : {real}")
+            print(f"  raw  : {gen_raw}")
+            print(f"  item : {gen_item}")
+            print(f"  expl : {explanation}")
+            print(f"  real : {real_item}")
             print("------------------------------------------")
         #Debug end
 
@@ -594,15 +606,14 @@ class MInterface(pl.LightningModule):
         correct_num=0
         valid_num=0
         total_num=0
-        for i,generate in enumerate(eval_content["generate"]):
-            real=eval_content["real"][i]
+        for i, generate_item in enumerate(eval_content["generate_item"]):
+            real=eval_content["real_item"][i]
             total_num+=1
-            generate=str(generate)
+            generate=self._normalize_item_name(generate_item)
             real=self._normalize_item_name(real)
-            recommended_items = self._extract_recommended_items(generate)
-            if recommended_items:
+            if generate:
                 valid_num+=1
-                if real == recommended_items[0]:
+                if real == generate:
                     correct_num+=1
         valid_ratio=valid_num/total_num if total_num else 0
         if valid_num>0:
@@ -617,12 +628,12 @@ class MInterface(pl.LightningModule):
         candidates = []
 
         # Preferred format: item: {item_1, item_2}
-        brace_match = re.search(r'item\s*:\s*\{([^}]*)\}', text, flags=re.IGNORECASE | re.DOTALL)
+        brace_match = re.search(r'item\s*[:：]\s*[\{｛]([^｝}]*)[\}｝]', text, flags=re.IGNORECASE | re.DOTALL)
         if brace_match:
             raw = brace_match.group(1)
             candidates.extend([x.strip() for x in re.split(r'[,、\n]+', raw) if x.strip()])
         else:
-            line_match = re.search(r'item\s*:\s*([^\n\r]+)', text, flags=re.IGNORECASE)
+            line_match = re.search(r'item\s*[:：]\s*([^\n\r]+)', text, flags=re.IGNORECASE)
             if line_match:
                 candidates.append(line_match.group(1).strip())
 
@@ -635,18 +646,14 @@ class MInterface(pl.LightningModule):
                 seen.add(name)
         return normalized
 
-    def _normalize_structured_output(self, generated_text):
-        """Convert model output into the expected two-line format."""
-        text = str(generated_text).strip()
-        items = self._extract_recommended_items(text)
-        item_block = items[0] if items else ""
+    def _extract_item_and_explanation(self, generated_text):
+        raw_text = str(generated_text).strip()
+        items = self._extract_recommended_items(raw_text)
+        generate_item = items[0] if items else ""
 
         explanation = ""
-        explanation_match = re.search(r'explanation\s*:\s*([^\n\r]+)', text, flags=re.IGNORECASE)
+        explanation_match = re.search(r'explanation\s*[:：]\s*([^\n\r]+)', raw_text, flags=re.IGNORECASE)
         if explanation_match:
             explanation = explanation_match.group(1).strip()
-        if not explanation:
-            explanation = "Based on this customer's recent purchase pattern."
-
-        return f"item: {{{item_block}}}\nexplanation: {explanation}"
+        return generate_item, explanation
 
