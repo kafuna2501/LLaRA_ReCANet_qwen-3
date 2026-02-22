@@ -1,5 +1,5 @@
-On [TodayHere], Customer_[UserIdHere][UserEmb] has purchased [TodaySeqHere], what would be bought next?
+[TodayHere]時点で、Customer_[UserIdHere][UserEmb] は [TodaySeqHere] を購入しています。次に購入される可能性が最も高い商品を1つ予測してください。
 
-Output format is as follows:
+出力形式は次のとおりです：
 "item: {exact item name}
-explanation: {one concise sentence in Japanese}"
+explanation: {日本語で簡潔な1文}"
